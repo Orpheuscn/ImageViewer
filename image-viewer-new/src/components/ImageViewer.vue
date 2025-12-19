@@ -29,7 +29,7 @@
 
       <!-- Drop Zone -->
       <div
-        v-else-if="!currentImage && images.length === 0"
+        v-else-if="!currentImage && images.length === 0 && dziItems.length === 0"
         @drop.prevent="handleDrop"
         @dragover.prevent
         @dragenter.prevent="isDragging = true"
@@ -46,7 +46,7 @@
       </div>
 
       <!-- Image Viewer -->
-      <div v-if="currentImage || isDziMode" class="relative">
+      <div v-if="currentImage || dziItems.length > 0" class="relative">
         <!-- OpenSeadragon Container -->
         <div ref="viewerContainer" class="w-full h-[70vh] bg-black rounded-lg"></div>
 

@@ -24,6 +24,7 @@
       <div v-if="isLoading" class="flex flex-col items-center justify-center h-[70vh]">
         <span class="loading loading-spinner loading-lg text-primary"></span>
         <p class="mt-4 text-lg">正在处理图片...</p>
+        <p class="mt-2 text-sm text-base-content/60">大文件夹或超大图片可能需要较长时间</p>
       </div>
 
       <!-- Drop Zone -->
@@ -40,6 +41,7 @@
         </svg>
         <h2 class="text-2xl font-bold mb-2">拖拽图片或文件夹到这里</h2>
         <p class="text-base-content/70">支持单张图片或整个文件夹 (包括 HEIC/HEIF 格式)</p>
+        <p class="text-base-content/50 text-sm mt-2">✨ 支持超大图片和大量文件</p>
       </div>
 
       <!-- Image Viewer -->
@@ -186,14 +188,34 @@ const traverseFileTree = async (item, files) => {
     })
   } else if (item.isDirectory) {
     const dirReader = item.createReader()
-    return new Promise((resolve) => {
-      dirReader.readEntries(async (entries) => {
-        for (const entry of entries) {
-          await traverseFileTree(entry, files)
-        }
-        resolve()
-      })
-    })
+
+    // readEntries() 每次最多返回 100 个条目,需要循环调用
+    const readAllEntries = async () => {
+      const allEntries = []
+
+      const readBatch = () => {
+        return new Promise((resolve) => {
+          dirReader.readEntries(async (entries) => {
+            if (entries.length > 0) {
+              allEntries.push(...entries)
+              // 继续读取下一批
+              const moreEntries = await readBatch()
+              resolve(moreEntries)
+            } else {
+              // 没有更多条目了
+              resolve(allEntries)
+            }
+          })
+        })
+      }
+
+      return await readBatch()
+    }
+
+    const entries = await readAllEntries()
+    for (const entry of entries) {
+      await traverseFileTree(entry, files)
+    }
   }
 }
 
@@ -221,8 +243,18 @@ const initViewer = () => {
       tileSources: {
         type: 'image',
         url: imageUrl,
-        buildPyramid: false
+        buildPyramid: true,  // 启用客户端图像金字塔构建
+        crossOriginPolicy: false
       },
+      // 渲染器配置 - 优先使用 Canvas,对超大图片更稳定
+      drawer: 'canvas',
+      // 增加最大图片尺寸限制
+      maxImageCacheCount: 200,
+      timeout: 120000,  // 增加超时时间到 2 分钟
+      // 内存和性能优化
+      immediateRender: false,
+      preload: false,
+      // 显示配置
       showNavigator: true,
       navigatorPosition: 'BOTTOM_RIGHT',
       animationTime: 0.5,
@@ -237,6 +269,12 @@ const initViewer = () => {
         clickToZoom: true,
         dblClickToZoom: true
       }
+    })
+
+    // 添加错误处理
+    viewer.addHandler('open-failed', (event) => {
+      console.error('图片加载失败:', event)
+      alert('图片加载失败,可能是图片太大或格式不支持。建议使用服务端预处理。')
     })
   }
 }

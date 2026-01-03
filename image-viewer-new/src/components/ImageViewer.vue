@@ -171,6 +171,7 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import OpenSeadragon from 'openseadragon'
 import heic2any from 'heic2any'
 import exifr from 'exifr'
+import UTIF from 'utif'
 
 const isDragging = ref(false)
 const isLoading = ref(false)
@@ -335,13 +336,57 @@ const processRegularImages = async (files) => {
         console.error('HEIC 转换失败:', error)
       }
     }
-    // 处理 TIFF 格式 - 确保设置正确的 MIME 类型
+    // 处理 TIFF 格式 - 使用 UTIF 解码
     else if (fileName.endsWith('.tif') || fileName.endsWith('.tiff')) {
-      // 创建一个新的 File 对象,确保 MIME 类型正确
-      const tiffFile = new File([file], file.name, { type: 'image/tiff' })
-      processedFiles.push(tiffFile)
-      // 异步提取 EXIF 数据
-      extractExifData(tiffFile)
+      try {
+        console.log('开始处理 TIFF 文件:', file.name)
+
+        // 读取 TIFF 文件为 ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer()
+        console.log('ArrayBuffer 大小:', arrayBuffer.byteLength)
+
+        // 使用 UTIF 解码
+        const ifds = UTIF.decode(arrayBuffer)
+        console.log('TIFF 解码成功, 页数:', ifds.length)
+
+        // 解码第一页
+        UTIF.decodeImage(arrayBuffer, ifds[0])
+        const rgba = UTIF.toRGBA8(ifds[0])
+
+        console.log('TIFF 图像信息 - 宽度:', ifds[0].width, '高度:', ifds[0].height)
+
+        // 创建 Canvas
+        const canvas = document.createElement('canvas')
+        canvas.width = ifds[0].width
+        canvas.height = ifds[0].height
+        const ctx = canvas.getContext('2d')
+        const imageData = ctx.createImageData(ifds[0].width, ifds[0].height)
+        imageData.data.set(rgba)
+        ctx.putImageData(imageData, 0, 0)
+
+        console.log('Canvas 创建成功')
+
+        // 将 Canvas 转换为 Blob
+        const blob = await new Promise((resolve) => {
+          canvas.toBlob(resolve, 'image/png')
+        })
+        console.log('Blob 创建成功, 大小:', blob.size)
+
+        // 创建新的 File 对象
+        const convertedFile = new File(
+          [blob],
+          file.name.replace(/\.tiff?$/i, '.png'),
+          { type: 'image/png' }
+        )
+        processedFiles.push(convertedFile)
+        console.log('TIFF 文件处理完成:', convertedFile.name)
+
+        // 异步提取 EXIF 数据 (从原始 TIFF 文件)
+        extractExifData(file)
+      } catch (error) {
+        console.error('TIFF 解码失败:', error)
+        console.error('错误详情:', error.message, error.stack)
+      }
     }
     // 处理其他图片格式
     else if (isSupportedImageFile(file)) {

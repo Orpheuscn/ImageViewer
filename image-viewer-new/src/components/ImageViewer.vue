@@ -40,7 +40,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
         <h2 class="text-2xl font-bold mb-2">拖拽图片或文件夹到这里</h2>
-        <p class="text-base-content/70">支持单张图片或整个文件夹 (包括 HEIC/HEIF 格式)</p>
+        <p class="text-base-content/70">支持单张图片或整个文件夹 (包括 HEIC/HEIF/TIFF 格式)</p>
         <p class="text-base-content/50 text-sm mt-2">✨ 支持超大图片、大量文件和 DZI 格式</p>
         <p class="text-base-content/40 text-xs mt-1">💡 拖入 vips 生成的 DZI 文件夹可查看超大图片</p>
       </div>
@@ -299,6 +299,13 @@ const sortImages = async (files) => {
   }
 }
 
+// 检查是否是支持的图片格式
+const isSupportedImageFile = (file) => {
+  const fileName = file.name.toLowerCase()
+  const supportedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.tif', '.tiff', '.heic', '.heif']
+  return file.type.startsWith('image/') || supportedExtensions.some(ext => fileName.endsWith(ext))
+}
+
 // 处理普通图片
 const processRegularImages = async (files) => {
   isDziMode.value = false
@@ -306,12 +313,10 @@ const processRegularImages = async (files) => {
   imageMetadata.clear()
 
   for (const file of files) {
-    if (file.type.startsWith('image/')) {
-      processedFiles.push(file)
-      // 异步提取 EXIF 数据
-      extractExifData(file)
-    } else if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
-      // 转换 HEIC 格式
+    const fileName = file.name.toLowerCase()
+
+    // 处理 HEIC/HEIF 格式 - 需要转换
+    if (fileName.endsWith('.heic') || fileName.endsWith('.heif')) {
       try {
         const convertedBlob = await heic2any({
           blob: file,
@@ -329,6 +334,20 @@ const processRegularImages = async (files) => {
       } catch (error) {
         console.error('HEIC 转换失败:', error)
       }
+    }
+    // 处理 TIFF 格式 - 确保设置正确的 MIME 类型
+    else if (fileName.endsWith('.tif') || fileName.endsWith('.tiff')) {
+      // 创建一个新的 File 对象,确保 MIME 类型正确
+      const tiffFile = new File([file], file.name, { type: 'image/tiff' })
+      processedFiles.push(tiffFile)
+      // 异步提取 EXIF 数据
+      extractExifData(tiffFile)
+    }
+    // 处理其他图片格式
+    else if (isSupportedImageFile(file)) {
+      processedFiles.push(file)
+      // 异步提取 EXIF 数据
+      extractExifData(file)
     }
   }
 
